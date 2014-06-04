@@ -18,7 +18,7 @@
 
 //extern int DEBUG_LEVEL;
 #ifndef DEBUG_LEVEL 
-#define DEBUG_LEVEL DEBUG_OFF
+#define DEBUG_LEVEL DEBUG_TRC
 #endif
 
 #define debug_err(msg...) \

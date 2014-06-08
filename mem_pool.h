@@ -1,115 +1,99 @@
 #ifndef __MEM_POOL_H__
 #define __MEM_POOL_H__
 
-#include <stdlib.h>   /* for posix_memalign or memalign */
-#include <string.h>
+#define char8_t     char
+#define uchar8_t    unsigned char
+#define int32_t     int
+#define uint32_t    unsigned int
+#define int64_t     long long
+#define uint64_t    unsigned long long
 
-/*
- * Linux has memalign() or posix_memalign()
- * Solaris has memalign()
- * FreeBSD 7.0 has posix_memalign(), besides, early version's malloc()
- * aligns allocations bigger than page size at the page boundary
- */
-#ifdef linux
-#define DISTOR_HAVE_POSIX_MEMALIGN 1
-#else
-#define DISTOR_HAVE_MEMALIGN 1
-#endif 
-
-#define MEMORY_OK    0
-#define MEMORY_ERR  -1
-
-#define MEM_POOL_ALIGNMENT 16
-
-typedef unsigned char  uchar_t;
-typedef unsigned int   uint_t;
-typedef unsigned int * uint_p;
+#define FACTOR 2
+#define MINSIZE 16       //2^4
+#define MAXSIZE 524288   //2^19   512KB
+#define SETSIZE 16
+#define ALIGN_SIZE 16
+#define OUTSET  -1       //表示该内存块不在set里
 
 /* 将size向上调整为最接近b的整数倍值 */
 #define mem_align_size(size, b) (((size) + ((b) - 1)) & ~((b) - 1))
-/* 将指针p的值向上调整为b的整数倍 */
-#define mem_align_ptr(p, b) \
-       (uchar_t *)(((uint_p)(p) + ((uint_p)b - 1)) & ~((uint_p)b - 1))
-    
-/* 内存置0 */
-#define mem_zero(buf, size) (void)memset(buf, 0, size)
 
-typedef struct memDataChunk {
-    struct memDataChunk *next;   /* 指向下一个chunk */
-    struct memDataChunk *prev;   /* 指向上一个chunk */
-    uchar_t *end;      /* 可用数据区开始位置 */
-    uint_t spare0;     /* 保留，并占位 */
-    uint_t set_id;     /* chunk所属的set在pool */
-    int use_count;  /* 该chunk被引用的数量 */
-    uint_t avail;      /* 该chunk中可用空间 */
-    uchar_t begin[0];  /* 数据区开始位置 */
-}memDataChunk;
+typedef struct MemChunk {
+    struct MemChunk *next;
+    struct MemChunk *prev;
+    uint64_t spare0;
+    int32_t  set_pos;   //set在set_table中的位置
+    uint32_t size;      //可用空间大小
+    char8_t data[0];
+}MemChunk;
+#define MemChunkSize (sizeof(struct MemChunk))
 
-struct memDataSet;
-typedef struct memLargeData {
-    struct memLargeData *next;
-    struct memLargeData *prev;
-    struct memDataSet *set;     /* 该largeData所属的set */
-    uint_t spare0;     /* 保留，并占位 */
-    uint_t size;       /* 大块数据的大小 */
-    uchar_t begin[0];  /* 数据区起始位置 */
-}memLargeData;
+/* 根据chunk地址计算可用内存起始位置 */
+#define mem_chunk_get_data(pchunk) ((void *)(pchunk->data))
+/* 根据data地址计算chunk指针 */
+#define mem_chunk_get_chunk(pdata) ((MemChunk *)((MemChunk *)pdata - 1))
+/* 根据data地址计算data大小 */
+#define mem_chunk_get_data_size(pdata) \
+        ((uint32_t)(*((uint32_t *)pdata - 1)))
 
-typedef struct memDataSet {
-    struct memDataChunk *chunk_head;
-    struct memDataChunk *chunk_tail;
-    struct memDataChunk *chunk_avail;  /* chunk链表中有空间的第一个可用chunk */
-    struct memLargeData *large;    /* 指向大数据块 */
-    uint_t id;       /* 该Set在内存池中的序号 */
-    uint_t avail;    /* 该set可用数据区的大小 */
-    uint_t max;      /* 当前set最大的一块数据区大小 */
-    uint_t keep;     /* 保留，并占位 */
-    struct memDataSet   *prev;
-    struct memDataSet   *next;
-}memDataSet;
+typedef struct MemSet {
+    struct MemChunk *chunk_head;  //栈底
+    struct MemChunk *chunk_tail;  //栈顶
+    struct MemChunk *chunk_stack_top;  //内存栈可分配元素指针
+    uint32_t chunk_size;
+    uint32_t chunk_count;
+}MemSet;
+#define MemSetSize (sizeof(struct MemSet))
 
-typedef struct {
-    uint_t size;    /* 内存池大小 */
-    uint_t avail;   /* 内存池可用空间 */
-    uint_t lavail;   /* 大空间的可用空间 */
-    uint_t use_id;  /* 当前分配内存的set id */
-    uint_t set_length;  /* set表长度 */
-    struct memDataSet **set_table;  /* set表 */
-}memPool;
-
-#define CHUNK_SIZE 1048576  /* chunk大小为1M */
-#define SET_SIZE   32       /* set大小为1M * 32 = 32M */
-#define ALLOC_LIMIT  4096 /* 分配界限 */
-
-/* 内存分配释放 */
-void * mem_alloc(uint_t size);
-void * mem_calloc(uint_t size);
-void mem_free( void *ptr);
-
-#if (DISTOR_HAVE_POSIX_MEMALIGN || DISTOR_HAVE_MEMALIGN)
-void *mem_align( uint_t alignment, uint_t size);
-#else
-#define mem_align(alignment, size)  mem_alloc(size)
+//允许在编译时通过gcc -DMEM_POOL_DEBUG=1的方式设置是否开启debug
+#ifndef MEM_POOL_DEBUG   
+#define MEM_POOL_DEBUG 0
 #endif
 
-/* 判断是否是large数据 */
-#define type_large_data(p) (*(uint_p)((uchar_t *)p-sizeof(uint_t)) > ALLOC_LIMIT)
+#if MEM_POOL_DEBUG
+#define MESSAGE_SIZE 80
 
-/* 内存池操作 */
-memPool * mem_create_pool(uint_t size, float ratio);        /* 创建 */
-void mem_destroy_pool(memPool *pool);          /* 销毁 */
-void mem_reset_pool(memPool *pool);            /* 重置 */
+typedef struct MemDebug {
+    MemChunk *alloc_chunk;
+    char8_t message[MESSAGE_SIZE];
+}MemDebug;
+#define MemDebugSize (sizeof(struct MemDebug))
+#endif  //#if MEM_POOL_DEBUG
 
-void * mem_pool_alloc(memPool *pool, uint_t size);     /* 分配 */
-void * mem_pool_calloc(memPool *pool, uint_t size);    /* 分配 初始化为0 */
-void mem_pool_free(memPool *pool, void *ptr);          /* 释放 */
 
-static inline void mem_pool_next_set(memPool *pool)
-{
-    ++(pool->use_id);
-    if(pool->use_id >= pool->set_length) {
-        pool->use_id = 0;
-    }
-}
+#define DEBUG_SIZE 10000
+typedef struct MemPool {
+    struct MemSet *set_table[SETSIZE];
+    uint64_t max_size;
+    uint64_t used_size;
+#if MEM_POOL_DEBUG
+    struct MemDebug debug_table[DEBUG_SIZE];
+#endif
+}MemPool;
+#define MemPoolSize (sizeof(struct MemPool))
+
+
+MemPool *mem_pool_create(uint32_t size);
+void mem_pool_destroy(MemPool *pool);
+
+void *mem_pool_alloc(MemPool *pool, uint32_t size
+#if MEM_POOL_DEBUG
+    , const char8_t *module
+#endif
+);
+
+void *mem_pool_calloc(MemPool *pool, uint32_t size
+#if MEM_POOL_DEBUG
+    , const char8_t *module
+#endif
+);
+
+void *mem_pool_realloc(MemPool *pool, void *pold, uint32_t size
+#if MEM_POOL_DEBUG
+    , const char8_t *module
+#endif
+);
+
+void mem_pool_free(MemPool *pool, void *p);
 
 #endif

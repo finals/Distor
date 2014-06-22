@@ -403,7 +403,7 @@ void test_mem_pool_binary_search_set_by_size()
 
     srand((unsigned)time(NULL)); 
     for(i = 0; i < TEST_TIMES; ++i) {
-        size = rand() % 524272 + 16;  //16 ~ 512K
+        size = rand() % 500 + 16;  //16 ~ 512K
         pos = mem_pool_binary_search_set_by_size(pool, size);
         for(j = 0; j < 16; ++j) {
             if(size_map[j] >= size)
@@ -507,8 +507,8 @@ int main()
     //test_mem_chunk();
     //test_mem_set();
     //test_mem_pool_create();
-    test_mem_pool_alloc();
-    //test_mem_pool_binary_search_set_by_size();
+    //test_mem_pool_alloc();
+    test_mem_pool_binary_search_set_by_size();
     //test_mem_pool_realloc();
     
     gettimeofday(&endtime,0);

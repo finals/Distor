@@ -83,11 +83,11 @@ err:
 
 #if MEM_POOL_DEBUG
 static void mem_pool_register_debug(MemPool *pool, MemChunk *chunk, 
-    const char  * module)
+    const char8_t * module)
 {
 
     uint32_t i = 0;
-    char  *msg = "[module]%s [chunk]%p [size]%u";
+    char8_t *msg = "[module]%s [chunk]%p [size]%u";
 
     for(i = 0; i < DEBUG_SIZE; ++i) {
         if(!pool->debug_table[i].alloc_chunk) {
@@ -204,7 +204,7 @@ int32_t mem_pool_binary_search_set_by_size(MemPool *pool, uint32_t size)
 
 void *mem_pool_alloc(MemPool *pool, uint32_t size
 #if MEM_POOL_DEBUG
-    , const char  *module
+    , const char8_t *module
 #endif
 )
 {
@@ -306,7 +306,7 @@ done:
 
 void *mem_pool_calloc(MemPool *pool, uint32_t size
 #if MEM_POOL_DEBUG
-    , const char  *module
+    , const char8_t *module
 #endif
 )
 {
@@ -326,7 +326,7 @@ void *mem_pool_calloc(MemPool *pool, uint32_t size
 
 void *mem_pool_realloc(MemPool *pool, void *pold, uint32_t new_size
 #if MEM_POOL_DEBUG
-    , const char  *module
+    , const char8_t *module
 #endif
 )
 {

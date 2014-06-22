@@ -1,7 +1,7 @@
 #ifndef __MEM_POOL_H__
 #define __MEM_POOL_H__
 
-#include <stdint.h>
+#include "types.h"
 
 #define FACTOR 2
 #define MINSIZE 16       //2^4
@@ -19,7 +19,7 @@ typedef struct MemChunk {
     uint64_t spare0;
     int32_t  set_pos;   //set在set_table中的位置
     uint32_t size;      //可用空间大小
-    char  data[0];
+    char8_t data[0];
 }MemChunk;
 #define MemChunkSize (sizeof(struct MemChunk))
 
@@ -50,7 +50,7 @@ typedef struct MemSet {
 
 typedef struct MemDebug {
     MemChunk *alloc_chunk;
-    char  message[MESSAGE_SIZE];
+    char8_t message[MESSAGE_SIZE];
 }MemDebug;
 #define MemDebugSize (sizeof(struct MemDebug))
 #endif  //#if MEM_POOL_DEBUG
@@ -73,19 +73,19 @@ void mem_pool_destroy(MemPool *pool);
 
 void *mem_pool_alloc(MemPool *pool, uint32_t size
 #if MEM_POOL_DEBUG
-    , const char  *module
+    , const char8_t *module
 #endif
 );
 
 void *mem_pool_calloc(MemPool *pool, uint32_t size
 #if MEM_POOL_DEBUG
-    , const char  *module
+    , const char8_t *module
 #endif
 );
 
 void *mem_pool_realloc(MemPool *pool, void *pold, uint32_t size
 #if MEM_POOL_DEBUG
-    , const char  *module
+    , const char8_t *module
 #endif
 );
 

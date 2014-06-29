@@ -25,7 +25,6 @@ evtHub *hub_create(int evtsize)
     /* 分配evtHub结构空间 */
     event_hub = malloc(sizeof(evtHub));
     if(NULL == event_hub) {
-        distor_debug(trc, "allocate evtHub return NULL.\n");
         goto err;
     }
 
@@ -33,7 +32,6 @@ evtHub *hub_create(int evtsize)
     event_hub->net_events = malloc(sizeof(hubNetEvent) * evtsize);
     event_hub->rdy_events = malloc(sizeof(hubReadyEvent) *evtsize);
     if(NULL == event_hub->rdy_events || NULL == event_hub->net_events) { 
-        distor_debug(trc, "allocate net_events or rdy_events return NULL.\n");
         goto err;
     }
 
@@ -51,7 +49,6 @@ evtHub *hub_create(int evtsize)
 
     /* 创建IO多路复用器 */
     if(MULTIPEX_ERR == evt_multipexer_create(event_hub)) {
-        distor_debug(trc, "create multipexer failed.");
         goto err;
     }
 
@@ -72,8 +69,6 @@ err:
 
 void hub_delete(evtHub *hub)
 {
-    distor_debug(trc, "delete evtHub.\n");
-    
     if(NULL == hub) 
         return;
 
@@ -85,7 +80,6 @@ void hub_delete(evtHub *hub)
 
 void hub_stop(evtHub *hub)
 {
-    distor_debug(trc, "stop hub.\n");
     hub->stop = 1;
 }
 

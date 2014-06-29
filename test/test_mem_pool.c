@@ -3,6 +3,7 @@
 #include <sys/time.h>
 #include <unistd.h>
 #include <stdlib.h>
+#include <assert.h>
 #include "../mem_pool.h"
 
 extern MemChunk * mem_chunk_create(uint32_t size, uint32_t set_pos);
@@ -11,7 +12,9 @@ extern void mem_set_destroy(MemSet *set);
 extern MemSet *mem_set_create(uint32_t size, uint32_t chunk_count, uint32_t pos);
 extern int32_t mem_pool_binary_search_set_by_size(MemPool *pool, uint32_t size);
 
-#define TEST_TIMES 2000
+#define TEST_TIMES 2000000
+#define TEST_ONE_TIME 5000
+#define sleep(n) usleep(1000 * (n))
 
 void test_mem_align_size()
 {
@@ -21,7 +24,6 @@ void test_mem_align_size()
     for(i = 0; i < TEST_TIMES; ++i) {
         size = rand() % 65535;
         align_size = mem_align_size(size, ALIGN_SIZE);
-        //
         if(align_size % ALIGN_SIZE){
             printf("%d  %d  %d\n", size, align_size, align_size % ALIGN_SIZE); 
             ++error_count;
@@ -326,13 +328,13 @@ void print_mem_pool_info(MemPool *pool)
     uint32_t i = 0;
 
     printf("\n-----------Memory Pool Information------------\n");
-    printf("Pool Size:      \t%llu\n", pool->max_size);
-    printf("pool Used Size: \t%llu\n", pool->used_size);
+    printf("Pool Size:      \t%lu\n", pool->max_size);
+    printf("pool Used Size: \t%lu\n", pool->used_size);
     printf("pool set info:  \n");
     for(i = 0; i < SETSIZE; ++i) {
         set = pool->set_table[i];
-        printf("set[%2u]", i);
-        printf("\t chunk size:  \t%u\n", set->chunk_size);
+        printf("set[%3u]", i);
+        printf("\t chunk size:  \t%u", set->chunk_size);
         printf("\t chunk count: \t%u\n", set->chunk_count);
     }
 }
@@ -341,14 +343,79 @@ void *p[TEST_TIMES];
 void test_mem_pool_alloc()
 {
     MemPool *pool = NULL;
-    uint32_t i = 0, size = 0, align_size = 640, error_count = 0;
-    uint64_t used_size = 0;
+    uint32_t i = 0,  size = 0, align_size = 640, error_count = 0;
+    //int32_t j = 0;
+    //uint64_t used_size = 0;
     
     pool = mem_pool_create(align_size); //160M
-    print_mem_pool_info(pool);
+    //print_mem_pool_info(pool);
     srand((unsigned)time(NULL)); 
     for(i = 0; i < TEST_TIMES; ++i) {
-        size = rand() % 524272 + 16;  //16 ~ 2M
+        size = rand() % 1024 + 16;  //16 ~ 2M
+        p[i] = mem_pool_alloc(pool, size
+#if MEM_POOL_DEBUG
+        , __FUNCTION__
+#endif
+        );
+        if(!p[i]) {
+            
+            ++error_count;
+            goto err;
+        }
+        
+        //used_size += mem_align_size(size, ALIGN_SIZE);
+        //printf("%u pool->used_size: %lu used_size: %lu\n", i, pool->used_size, used_size);
+        
+        //mem_pool_free(pool, p[i]);
+        /*
+        if(j != 0 && j % 43 == 0) {
+            while(j >= 0) {
+                mem_pool_free(pool, p[j]);
+                --j;
+            }
+            j = 0;
+        }
+        */
+     
+    }
+    //print_mem_pool_info(pool);
+    for(i = 0; i < TEST_TIMES; ++i) {
+       mem_pool_free(pool, p[i]); 
+    }
+    //print_mem_pool_info(pool);
+    test_mem_pool_set_size(pool, &error_count);
+
+err:
+    //if(pool->used_size != used_size)
+    //    ++error_count;
+    if(error_count);
+        //printf("test_mem_pool_alloc pool->max_size: %lu pool->used_size: %lu used_size: %lu error: %u\n",
+        //    pool->max_size, pool->used_size, used_size, error_count);
+    else {
+        //printf("test_mem_pool_alloc pool->max_size: %lu pool->used_size: %lu used_size: %lu \n",
+         //   pool->max_size, pool->used_size, used_size);
+        //printf("test_mem_pool_alloc times:%u      [OK]\n", i);
+    }
+    //print_mem_pool_info(pool);
+        
+    mem_pool_destroy(pool);
+    
+}
+
+void test_mem_pool_alloc_a(MemPool *pool)
+{
+    uint32_t i = 0, j = 0,  size = 0,  error_count = 0;
+    void *p[TEST_ONE_TIME];
+
+    //print_mem_pool_info(pool);
+    srand((unsigned)time(NULL)); 
+    for(i = 0; i < TEST_ONE_TIME; ++i) {
+        if(i%3) {
+            size = rand() % 1008 + 16;  //16 ~ 1024
+        }
+        else {
+            size = rand() % 64512 + 1024;  //16 ~ 1024
+        }
         p[i] = mem_pool_alloc(pool, size
 #if MEM_POOL_DEBUG
         , __FUNCTION__
@@ -358,65 +425,37 @@ void test_mem_pool_alloc()
             ++error_count;
             goto err;
         }
-        used_size += mem_align_size(size, ALIGN_SIZE);
-        //printf("%u pool->used_size: %llu used_size: %llu\n", i, pool->used_size, used_size);
-        
-        //mem_pool_free(pool, p[i]);
-        used_size -= mem_align_size(size, ALIGN_SIZE);
-     
     }
-    print_mem_pool_info(pool);
-    for(i = 0; i < TEST_TIMES; ++i) {
-       mem_pool_free(pool, p[i]); 
-    }
-
-    test_mem_pool_set_size(pool, &error_count);
+    //test_mem_pool_set_size(pool, &error_count);
 
 err:
-    if(pool->used_size != used_size)
-        ++error_count;
-    if(error_count)
-        printf("test_mem_pool_alloc pool->max_size: %llu pool->used_size: %llu used_size: %llu error: %u\n",
-            pool->max_size, pool->used_size, used_size, error_count);
-    else {
-        printf("test_mem_pool_alloc pool->max_size: %llu pool->used_size: %llu used_size: %llu \n",
-            pool->max_size, pool->used_size, used_size);
-        printf("test_mem_pool_alloc times:%u      [OK]\n", i);
+    for(j = 0; j < TEST_ONE_TIME; ++j) {
+       mem_pool_free(pool, p[j]); 
     }
-    print_mem_pool_info(pool);
-        
-    mem_pool_destroy(pool);
     
+    return;
 }
 
 void test_mem_pool_binary_search_set_by_size()
 {
     MemPool *pool = NULL;
-    uint32_t i = 0, j = 0, size = 0, align_size = 160, error_count = 0;
+    uint32_t i = 0, size = 0, align_size = 160, error_count = 0;
     int32_t pos = OUTSET;
-    uint32_t size_map[] = {
-        16, 32, 64, 128, 256, 512, 1024, 2048, 4096, 8192, 16384, 32768, 65536,
-        131072, 262144, 524288
-    };
 
     pool = mem_pool_create(align_size);
 
     srand((unsigned)time(NULL)); 
     for(i = 0; i < TEST_TIMES; ++i) {
-        size = rand() % 500 + 16;  //16 ~ 512K
+        size = rand() % 84 + 16;  //16 ~ 512K
         pos = mem_pool_binary_search_set_by_size(pool, size);
-        for(j = 0; j < 16; ++j) {
-            if(size_map[j] >= size)
-                break;
-        }
         if(pool->set_table[pos]->chunk_size < size) {
-            printf("size: %u  match_size: %u  pos: %d chunk_size: %u size_map: %u\n",
-                size, size_map[j], pos, pool->set_table[pos]->chunk_size, size_map[pos]);
+            printf("size: %u pos: %d chunk_size: %u\n",
+                size, pos, pool->set_table[pos]->chunk_size);
             ++error_count;
         }
-        else
-            printf("size: %u pos: %d chunk_size: %u size_map: %u\n",
-                size, pos, pool->set_table[pos]->chunk_size, size_map[pos]);
+        else;
+            printf("size: %u pos: %d chunk_size: %u \n",
+                size, pos, pool->set_table[pos]->chunk_size);
         
     }
     if(error_count)
@@ -456,10 +495,14 @@ void test_mem_pool_realloc()
             align_size = 2 * size + rand() % 128000;
         }
  
-        p_new = mem_pool_realloc(pool, p, align_size);
+        p_new = mem_pool_realloc(pool, p, align_size
+#if MEM_POOL_DEBUG
+            , "test_mem_pool_realloc"
+#endif
+        );
 
         chunk = mem_chunk_get_chunk(p_new);
-        if(align_size <= MAXSIZE) {
+        if(align_size <= MEDIUM_MAX_SIZE) {
             pos = mem_pool_binary_search_set_by_size(pool, align_size);
             set = pool->set_table[pos];
             if(set->chunk_size < align_size || 
@@ -483,10 +526,10 @@ void test_mem_pool_realloc()
         mem_pool_free(pool, p_new);
     }
     if(error_count)
-        printf("test_mem_pool_realloc pool->max_size: %llu pool->used_size: %llu error: %u\n",
+        printf("test_mem_pool_realloc pool->max_size: %lu pool->used_size: %lu error: %u\n",
             pool->max_size, pool->used_size,  error_count);
     else
-        printf("test_mem_pool_realloc pool->max_size: %llu pool->used_size: %llu \n",
+        printf("test_mem_pool_realloc pool->max_size: %lu pool->used_size: %lu \n",
             pool->max_size, pool->used_size);
 
 err:
@@ -496,8 +539,13 @@ err:
 
 int main()
 {
+    uint32_t i = 0;
+    uint64_t alloc_free_count = 0L;
     struct timeval starttime, endtime;
     double timeuse;
+
+    MemPool *pool = mem_pool_create(640); //640M
+    
     gettimeofday(&starttime,0);
     
     //test_mem_align_size();
@@ -508,10 +556,22 @@ int main()
     //test_mem_set();
     //test_mem_pool_create();
     //test_mem_pool_alloc();
-    test_mem_pool_binary_search_set_by_size();
+
+
+    for(i = 0; i < TEST_TIMES; ++i) {
+        test_mem_pool_alloc_a(pool);
+        sleep(i % 15);
+        alloc_free_count += TEST_ONE_TIME;
+        printf("test %u times\n", i);
+    }
+
+    
+    //test_mem_pool_binary_search_set_by_size();
     //test_mem_pool_realloc();
     
     gettimeofday(&endtime,0);
+    mem_pool_destroy(pool);
+    printf("do %lu test\n", alloc_free_count);
 
     timeuse = 1000000*(endtime.tv_sec - starttime.tv_sec) 
             + endtime.tv_usec - starttime.tv_usec;
@@ -519,9 +579,9 @@ int main()
 
     printf("cost %lfms\n", timeuse);
     
-    //printf("Chunk Struct size: %llu\n", MemChunkSize);    
-    //printf("Set Struct size: %llu\n", MemSetSize);   
-    //printf("Pool Struct size: %llu\n", MemPoolSize);   
+    //printf("Chunk Struct size: %lu\n", MemChunkSize);    
+    //printf("Set Struct size: %lu\n", MemSetSize);   
+    //printf("Pool Struct size: %lu\n", MemPoolSize);   
 
     return 0;
 }

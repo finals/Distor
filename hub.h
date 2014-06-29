@@ -72,7 +72,7 @@ int     hub_create_net_event(evtHub *hub, int fd, int mode,
 int     hub_delete_net_event(evtHub *hub, int fd, int mode);
 hubNetEvent * hub_get_net_event(evtHub *hub, int fd);
 
-long long     hub_create_time_event(evtHub *hub, long long milliseconds,
+long long  hub_create_time_event(evtHub *hub, long long milliseconds,
                  hubTimeEventProc proc, void *data);
 hubTimeEvent* hub_get_Time_event(evtHub *hub, long long id);
 int     hub_delete_time_event(evtHub *hub, long long id);

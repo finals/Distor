@@ -98,19 +98,16 @@ void tcp_write_handler(evtHub *hub, int fd, void *data, int mode)
 
     DISTOR_NOTUSED(mode);
 
-    distor_debug(trc, "call tcp_write_handler...\n");
-    
-    sprintf(buf,"HTTP/1.1 200 OK\r\nContent-Length: %d\r\n\r\nHello World", 11);
+    sprintf(buf,"HTTP/1.1 200 OK\r\nContent-Length: %d\r\n\r\nHello Finals", 11);
     nbytes = net_writen(server->err, fd, buf, strlen(buf)+1);
     if(NET_ERR == nbytes) {
         hub_delete_net_event(hub, fd, EVT_ALL);
         return;
     }
 
-    distor_debug(trc, "Write data: %s\n", buf);
 
-    //retval = hub_create_net_event(hub, fd, EVT_READ, tcp_read_handler, data);
-    //if(EVT_ERR == retval) return;
+    retval = hub_create_net_event(hub, fd, EVT_READ, tcp_read_handler, data);
+    if(EVT_ERR == retval) return;
     retval = hub_delete_net_event(hub, fd, EVT_WRITE);
     if(EVT_ERR == retval) return;
 
@@ -122,11 +119,8 @@ void tcp_read_handler(evtHub *hub, int fd, void *data, int mode)
     int nbytes = 0, retval;
 
     DISTOR_NOTUSED(mode);
-
-    distor_debug(trc, "call tcp_read_handler...\n");
     
     nbytes = net_readn(server->err, fd, buf, 128);
-    distor_debug(trc, "read return %d\n", nbytes);
     /* 需要对net_readn的返回值进行处理 */
     if(NET_ERR == nbytes) {
         hub_delete_net_event(hub, fd, EVT_ALL);
@@ -138,7 +132,6 @@ void tcp_read_handler(evtHub *hub, int fd, void *data, int mode)
         close(fd);
         return;
     }
-    distor_debug(trc, "Read data: %s\n", buf);
     retval = hub_create_net_event(hub, fd, EVT_WRITE, tcp_write_handler, data);
     if(NET_ERR == retval) return;
     retval = hub_delete_net_event(hub, fd, EVT_READ);
@@ -153,10 +146,11 @@ void tcp_accept_handler(evtHub *hub, int fd, void *data, int mode)
 
     DISTOR_NOTUSED(data);
     DISTOR_NOTUSED(mode);
-    distor_debug(trc, "call tcp_accept_handler...\n");
+
     cfd = tcp_accept(server->err, fd, cip, &cport);
     if(NET_ERR == cfd) return;
-    distor_debug(trc, "call accept return %d\n", cfd);
+
+    printf("tcp_accept_handler: client fd: %d\n", cfd);
     distor_client = create_distor_client(cip, cport, cfd);
     if(NULL == distor_client) return;
 
@@ -201,6 +195,7 @@ int main(void)
         return EVT_ERR;
     }
 */
+    printf("start main loop...\n");
     hub_main(server->hub);
 
     return 0;

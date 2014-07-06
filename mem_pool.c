@@ -36,7 +36,11 @@ void mem_set_destroy(MemSet *set)
             mem_chunk_destroy(chunk);
             chunk = next;
         }
-
+        /*
+        if(set->sentinel) {
+            free(set);
+        }
+        */
         free(set);
     }
 }
@@ -73,6 +77,7 @@ MemSet *mem_set_create(uint32_t size, uint32_t chunk_count, uint32_t pos)
 
     set->chunk_count = chunk_count;
     set->chunk_size = size;
+    splock_init(&set->lock);
 
     return set;
 
@@ -92,12 +97,19 @@ static void mem_pool_register_debug(MemPool *pool, MemChunk *chunk,
 
     for(i = 0; i < DEBUG_SIZE; ++i) {
         if(!pool->debug_table[i].alloc_chunk) {
+            splock_lock(&pool->debug_table[i].lock);
+            if(!pool->debug_table[i].alloc_chunk) {
+                splock_unlock(&pool->debug_table[i].lock);
+                continue;
+            }
             pool->debug_table[i].alloc_chunk = chunk;
             snprintf(pool->debug_table[i].message, MESSAGE_SIZE, msg, 
                     module, chunk, chunk->size);
+            splock_unlock(&pool->debug_table[i].lock);
             return;
         }
     }
+    
 }
 
 static void mem_pool_unregister_debug(MemPool *pool, MemChunk *chunk)
@@ -161,6 +173,7 @@ MemPool *mem_pool_create(uint32_t max_size)
         if(!pool->set_table[i]) {
             goto err;
         }
+        pool->used_size += chunk_size * chunk_count;
         chunk_size += TINY_STEP; 
     }
 
@@ -170,13 +183,16 @@ MemPool *mem_pool_create(uint32_t max_size)
         if(!pool->set_table[i]) {
             goto err;
         }
-        chunk_size += MEDIUM_STEP;  
+        pool->used_size += chunk_size * chunk_count;
+        chunk_size += MEDIUM_STEP; 
     }
 
 #if MEM_POOL_DEBUG
     for(i = 0; i < DEBUG_SIZE; ++i) {
         pool->debug_table[i].alloc_chunk = NULL;
+        splock_init(&pool->debug_table[i].lock);
     }
+
 #endif
 
     return pool;
@@ -227,47 +243,50 @@ void *mem_pool_alloc(MemPool *pool, uint32_t size
 #endif
 )
 {
-    uint32_t align_size = mem_align_size(size, ALIGN_SIZE);
+    uint32_t align_size = size;
     int32_t pos = OUTSET;
     MemChunk *palloc = NULL;
     MemSet *set = NULL;
-    
-    if(pool->used_size + align_size > pool->max_size) {
-        return NULL;
+
+    if(pool->used_size + size > pool->max_size) {
+        goto fail; 
     }
 
-    if(align_size <= MEDIUM_MAX_SIZE) {
-        pos = mem_pool_binary_search_set_by_size(pool, align_size);
-        
-        if(OUTSET != pos) {
-            set = pool->set_table[pos];
-            palloc = set->chunk_head;
-            //chunk_head指向下一个元素，如果它指向NULL，表示栈满
-            if(palloc) {
-                set->chunk_head = palloc->next;
-                if(palloc->next) { 
-                    palloc->next->prev = NULL;
-                }
-                else {  //该节点是链表中最后一个节点，更新tail指针
-                    set->chunk_tail = NULL;
-                }
-                --set->chunk_count;
+    if(size <= MEDIUM_MAX_SIZE) {
+        pos = mem_pool_get_set_by_size(size);
+        set = pool->set_table[pos];
+        align_size = set->chunk_size;
+
+        splock_lock(&set->lock);
+        palloc = set->chunk_head;
+        //chunk_head指向下一个元素，如果它指向NULL，表示栈满
+        if(palloc) {
+            set->chunk_head = palloc->next;
+            if(!palloc->next) { //该节点是链表中最后一个节点，更新tail指针
+                set->chunk_tail = NULL;
             }
         }
+        splock_unlock(&set->lock);
     }
     
     if(!palloc) {
         palloc = mem_chunk_create(align_size, OUTSET);
+        if(palloc) {
+            __sync_fetch_and_add(&pool->used_size, palloc->size);
+            goto success;
+        }
+        else {
+            goto fail;     
+        }
     }
-    
-    if(palloc) {
-#if MEM_POOL_DEBUG
-        mem_pool_register_debug(pool, palloc, module);
-#endif
-        pool->used_size += palloc->size;
 
-        return mem_chunk_get_data(palloc);
-    }
+success:
+#if MEM_POOL_DEBUG
+    mem_pool_register_debug(pool, palloc, module);
+#endif    
+    return mem_chunk_get_data(palloc);
+
+fail:
     return NULL;
 }
 
@@ -280,22 +299,26 @@ void mem_pool_free(MemPool *pool, void *p)
     if(!p) return;
 
     chunk = mem_chunk_get_chunk(p);
-    pool->used_size -= chunk->size;
     
     if(chunk->size <= MEDIUM_MAX_SIZE) {
         //将chunk加入链表，分两种情况，原来是链表的元素和新malloc的chunk
-        if(OUTSET == chunk->set_pos) {  
-            pos = mem_pool_binary_search_set_by_size(pool, chunk->size); 
-            set = pool->set_table[pos];
-            chunk->set_pos = pos;
-            
-        }
-        else {
+        if(chunk->set_pos > OUTSET) {
             set = pool->set_table[chunk->set_pos];
         }
+        else {  
+            //pos = mem_pool_binary_search_set_by_size(pool, chunk->size); 
+            pos = mem_pool_get_set_by_size(chunk->size);
+            set = pool->set_table[pos];
+            if(set->chunk_count * set->chunk_size >= SET_MAX_SIZE) {
+                goto overflow;
+            }
+            chunk->set_pos = pos;   
+            __sync_fetch_and_add(&set->chunk_count, 1);  //set增加一个chunk
+        }
         
+        splock_lock(&set->lock);
         if(!set->chunk_head) {   //当前chunk链表为空
-            chunk->prev = NULL;
+            //chunk->prev = NULL;
             set->chunk_head = chunk;
             set->chunk_tail = chunk;
         }
@@ -304,11 +327,12 @@ void mem_pool_free(MemPool *pool, void *p)
             chunk->prev = set->chunk_tail;
         }
         chunk->next = NULL;
-        ++set->chunk_count;  //set增加一个chunk
         set->chunk_tail = chunk;
+        splock_unlock(&set->lock);
     }
-
     else {
+overflow:
+        __sync_fetch_and_sub(&pool->used_size, chunk->size);
         mem_chunk_destroy(chunk);
     }
 

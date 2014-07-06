@@ -150,6 +150,8 @@ void tcp_accept_handler(evtHub *hub, int fd, void *data, int mode)
     cfd = tcp_accept(server->err, fd, cip, &cport);
     if(NET_ERR == cfd) return;
 
+    net_non_block(server->err, cfd);
+
     printf("tcp_accept_handler: client fd: %d\n", cfd);
     distor_client = create_distor_client(cip, cport, cfd);
     if(NULL == distor_client) return;

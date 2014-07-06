@@ -4,6 +4,8 @@
 #include <unistd.h>
 #include <stdlib.h>
 #include <assert.h>
+#include <pthread.h>
+#include <string.h>
 #include "../mem_pool.h"
 
 extern MemChunk * mem_chunk_create(uint32_t size, uint32_t set_pos);
@@ -12,7 +14,7 @@ extern void mem_set_destroy(MemSet *set);
 extern MemSet *mem_set_create(uint32_t size, uint32_t chunk_count, uint32_t pos);
 extern int32_t mem_pool_binary_search_set_by_size(MemPool *pool, uint32_t size);
 
-#define TEST_TIMES 2000000
+#define TEST_TIMES 2000
 #define TEST_ONE_TIME 5000
 #define sleep(n) usleep(1000 * (n))
 
@@ -326,6 +328,7 @@ void print_mem_pool_info(MemPool *pool)
 {
     MemSet *set = NULL;
     uint32_t i = 0;
+    uint64_t pool_size = 0;
 
     printf("\n-----------Memory Pool Information------------\n");
     printf("Pool Size:      \t%lu\n", pool->max_size);
@@ -336,7 +339,9 @@ void print_mem_pool_info(MemPool *pool)
         printf("set[%3u]", i);
         printf("\t chunk size:  \t%u", set->chunk_size);
         printf("\t chunk count: \t%u\n", set->chunk_count);
+        pool_size += set->chunk_size * (set->chunk_count);
     }
+    printf("pool_size:   \t%lu\n", pool_size);
 }
 
 void *p[TEST_TIMES];
@@ -537,15 +542,84 @@ err:
     
 }
 
+//static uint32_t fail_alloc = 0;
+//static uint64_t total_alloc = 0;
+void *test_mem_pool_alloc_threads(void *param)
+{
+    uint32_t i = 0, j = 0,  size = 0;
+    void *p[TEST_ONE_TIME];
+    MemPool *pool = (MemPool *)param;
+
+    for(j = 0; j < TEST_ONE_TIME; ++j) {
+       p[j] = NULL; 
+    }
+
+    //print_mem_pool_info(pool);
+    srand((unsigned)time(NULL)); 
+    for(i = 0; i < TEST_ONE_TIME; ++i) {
+        if(i%3) {
+            size = rand() % 1008 + 16;  //16 ~ 1024
+            //alloc_size = mem_align_size(size, 16);
+        }
+        else {
+            size = rand() % 64512 + 1025;  //2048 
+            //alloc_size = mem_align_size(size, 1024);
+        }
+        /*
+        p[i] = mem_pool_alloc(pool, size
+#if MEM_POOL_DEBUG
+        , __FUNCTION__
+#endif
+        );
+        */
+        p[i] = malloc(size);
+        if(!p[i]) {
+            //__sync_fetch_and_add(&fail_alloc, 1);
+            //printf("alloc size: %u faild thread id: %lu\n", size, pthread_self());
+            goto err;
+        }
+
+        //memset(p[i], 'a', size);
+        
+        //sleep(5);
+        //__sync_fetch_and_add(&total_alloc, alloc_size);
+    }
+    //test_mem_pool_set_size(pool, &error_count);
+    /*
+    for(j = 0; j < TEST_ONE_TIME; ++j) {
+        printf("%p ", p[i]);
+        if(j % 5 == 0) printf("\n");
+    }
+    */
+    //print_mem_pool_info(pool);
+
+err:
+    for(j = 0; j < TEST_ONE_TIME; ++j) {
+       //mem_pool_free(pool, p[j]); 
+       free(p[j]);
+    }
+    //print_mem_pool_info(pool);
+    return NULL;
+}
+
+void * test_threads(void *param)
+{
+    int32_t i = 100;
+    while(i--);
+    return NULL;
+}
+
+#define THREAD_COUNT 10
 int main()
 {
     uint32_t i = 0;
     uint64_t alloc_free_count = 0L;
     struct timeval starttime, endtime;
     double timeuse;
+    pthread_t tids[THREAD_COUNT];
 
-    MemPool *pool = mem_pool_create(640); //640M
-    
+    MemPool *pool = mem_pool_create(2048); //640M
+    //print_mem_pool_info(pool);
     gettimeofday(&starttime,0);
     
     //test_mem_align_size();
@@ -557,27 +631,38 @@ int main()
     //test_mem_pool_create();
     //test_mem_pool_alloc();
 
+    //print_mem_pool_info(pool);
 
-    for(i = 0; i < TEST_TIMES; ++i) {
-        test_mem_pool_alloc_a(pool);
-        sleep(i % 15);
+    for(i = 0; i < THREAD_COUNT; ++i) {
+        pthread_create(&tids[i], NULL, test_mem_pool_alloc_threads, pool);
+        //pthread_create(&tids[i], NULL, test_threads, pool);
+        //sleep(i % 15);
         alloc_free_count += TEST_ONE_TIME;
-        printf("test %u times\n", i);
+        printf("thread %u create\n", i);
     }
 
     
     //test_mem_pool_binary_search_set_by_size();
     //test_mem_pool_realloc();
+
+    for(i = 0; i < THREAD_COUNT; ++i) {
+         pthread_join(tids[i], NULL);
+         //sleep(3);
+    }
     
     gettimeofday(&endtime,0);
-    mem_pool_destroy(pool);
+    
     printf("do %lu test\n", alloc_free_count);
 
     timeuse = 1000000*(endtime.tv_sec - starttime.tv_sec) 
             + endtime.tv_usec - starttime.tv_usec;
     timeuse /=1000;
 
-    printf("cost %lfms\n", timeuse);
+    printf("cost %lfms\n\n", timeuse);
+
+    //print_mem_pool_info(pool);
+
+    mem_pool_destroy(pool);
     
     //printf("Chunk Struct size: %lu\n", MemChunkSize);    
     //printf("Set Struct size: %lu\n", MemSetSize);   

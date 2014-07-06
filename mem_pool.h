@@ -2,6 +2,8 @@
 #define __MEM_POOL_H__
 
 #include <stdint.h>
+#include "config.h"
+#include "splock.h"
 
 #define TINY_MIN_SIZE 16   
 #define TINY_MAX_SIZE 1024
@@ -11,6 +13,7 @@
 #define MEDIUM_STEP 1024
 #define SETSIZE 127
 #define ALIGN_SIZE 16
+#define SET_MAX_SIZE 1048576  //1M
 
 /* 内存块类型 */
 #define TINY     1      //16 ~ 1024
@@ -22,6 +25,15 @@
 
 /* 将size向上调整为最接近b的整数倍值 */
 #define mem_align_size(size, b) (((size) + ((b) - 1)) & ~((b) - 1))
+
+/* 将size向上调整为set表中所拥有的值 */
+static inline uint32_t mem_align_size_match_set(size)
+{                                    
+    uint32_t align_size;
+    
+    align_size = (size <= TINY_MAX_SIZE) ? TINY_MIN_SIZE : TINY_MAX_SIZE; 
+    return mem_align_size(size, align_size);                                
+}
 
 typedef struct MemChunk {
     struct MemChunk *next;
@@ -44,8 +56,10 @@ typedef struct MemChunk {
 typedef struct MemSet {
     struct MemChunk *chunk_head;  //栈底
     struct MemChunk *chunk_tail;  //栈顶
+//    struct MemChunk *sentinel;
     uint32_t chunk_size;
     uint32_t chunk_count;
+    splock_t lock;
 }MemSet;
 #define MemSetSize (sizeof(struct MemSet))
 
@@ -61,6 +75,7 @@ typedef struct MemSet {
 typedef struct MemDebug {
     MemChunk *alloc_chunk;
     char  message[MESSAGE_SIZE];
+    splock_t lock;
 }MemDebug;
 #define MemDebugSize (sizeof(struct MemDebug))
 #endif  //#if MEM_POOL_DEBUG
@@ -100,4 +115,15 @@ void *mem_pool_realloc(MemPool *pool, void *pold, uint32_t size
 
 void mem_pool_free(MemPool *pool, void *p);
 
-#endif
+/* 由于数据结构的特殊性，用下面函数替代mem_pool_binary_search_set_by_size */
+static inline int32_t mem_pool_get_set_by_size(uint32_t size)
+{
+    if(size <= TINY_MAX_SIZE) {
+        return (size >> 4) - 1;    
+    }
+    else {
+        return (size >> 10) + 62;
+    }
+}
+
+#endif  /* __MEM_POOL_H__ */

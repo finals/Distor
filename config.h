@@ -12,6 +12,12 @@
 #endif
 #endif
 
+/* 是否开启多线程 */
+#ifndef ENABLE_THREAD
+#define ENABLE_THREAD  0
+#endif
+
+
 #ifndef NULL
 #define NULL ((void*)0)
 #endif

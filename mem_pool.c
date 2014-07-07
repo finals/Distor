@@ -307,7 +307,7 @@ void mem_pool_free(MemPool *pool, void *p)
         }
         else {  
             //pos = mem_pool_binary_search_set_by_size(pool, chunk->size); 
-            pos = mem_pool_get_set_by_size(chunk->size);
+            pos = mem_pool_get_set_by_align_size(chunk->size);
             set = pool->set_table[pos];
             if(set->chunk_count * set->chunk_size >= SET_MAX_SIZE) {
                 goto overflow;

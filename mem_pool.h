@@ -116,13 +116,23 @@ void *mem_pool_realloc(MemPool *pool, void *pold, uint32_t size
 void mem_pool_free(MemPool *pool, void *p);
 
 /* 由于数据结构的特殊性，用下面函数替代mem_pool_binary_search_set_by_size */
+static inline int32_t mem_pool_get_set_by_align_size(uint32_t align_size)
+{
+    if(align_size <= TINY_MAX_SIZE) {
+        return (align_size >> 4) - 1;    
+    }
+    else {
+        return (align_size >> 10) + 62;
+    }
+}
+
 static inline int32_t mem_pool_get_set_by_size(uint32_t size)
 {
     if(size <= TINY_MAX_SIZE) {
-        return (size >> 4) - 1;    
+        return (mem_align_size(size, TINY_MIN_SIZE) >> 4) - 1;    
     }
     else {
-        return (size >> 10) + 62;
+        return (mem_align_size(size, TINY_MAX_SIZE) >> 10) + 62;
     }
 }
 

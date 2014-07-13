@@ -13,7 +13,8 @@
 #define MEDIUM_STEP 1024
 #define SETSIZE 127
 #define ALIGN_SIZE 16
-#define SET_MAX_SIZE 1048576  //1M
+#define SET_INIT_MAX_SIZE 1048576  //1M
+#define FREE_BOUNDARY 0.8
 
 /* ÄÚ´æ¿éÀàÐÍ */
 #define TINY     1      //16 ~ 1024

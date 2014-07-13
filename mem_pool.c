@@ -167,8 +167,8 @@ MemPool *mem_pool_create(uint32_t max_size)
     pool->max_size = max_size * 1024 * 1024;
     pool->used_size = 0;
 
-    chunk_count = TINY_MAX_SIZE / TINY_MIN_SIZE;
     for(i = 0, chunk_size = TINY_MIN_SIZE; i < SET_BOUNDARY; ++i) {
+        chunk_count = SET_INIT_MAX_SIZE / chunk_size;
         pool->set_table[i] = mem_set_create(chunk_size, chunk_count, i);
         if(!pool->set_table[i]) {
             goto err;
@@ -177,8 +177,8 @@ MemPool *mem_pool_create(uint32_t max_size)
         chunk_size += TINY_STEP; 
     }
 
-    chunk_count = 1;
     for(i = SET_BOUNDARY, chunk_size = MEDIUM_MIN_SIZE; i < SETSIZE; ++i) {
+        chunk_count = SET_INIT_MAX_SIZE / chunk_size;
         pool->set_table[i] = mem_set_create(chunk_size, chunk_count, i);
         if(!pool->set_table[i]) {
             goto err;
@@ -248,7 +248,7 @@ void *mem_pool_alloc(MemPool *pool, uint32_t size
     MemChunk *palloc = NULL;
     MemSet *set = NULL;
 
-    if(pool->used_size + size > pool->max_size) {
+    if(pool->used_size + size > pool->max_size || 0 >= size) {
         goto fail; 
     }
 
@@ -309,7 +309,8 @@ void mem_pool_free(MemPool *pool, void *p)
             //pos = mem_pool_binary_search_set_by_size(pool, chunk->size); 
             pos = mem_pool_get_set_by_align_size(chunk->size);
             set = pool->set_table[pos];
-            if(set->chunk_count * set->chunk_size >= SET_MAX_SIZE) {
+            //if(set->chunk_count * set->chunk_size >= SET_INIT_MAX_SIZE) {
+            if(pool->used_size > pool->max_size * FREE_BOUNDARY) {
                 goto overflow;
             }
             chunk->set_pos = pos;   

@@ -14,8 +14,8 @@ extern void mem_set_destroy(MemSet *set);
 extern MemSet *mem_set_create(uint32_t size, uint32_t chunk_count, uint32_t pos);
 extern int32_t mem_pool_binary_search_set_by_size(MemPool *pool, uint32_t size);
 
-#define TEST_TIMES 2000
-#define TEST_ONE_TIME 5000
+#define TEST_TIMES 200000
+#define TEST_ONE_TIME 100000
 #define sleep(n) usleep(1000 * (n))
 
 void test_mem_align_size()
@@ -549,7 +549,7 @@ void *test_mem_pool_alloc_threads(void *param)
     uint32_t i = 0, j = 0,  size = 0;
     void *p[TEST_ONE_TIME];
     MemPool *pool = (MemPool *)param;
-
+ 
     for(j = 0; j < TEST_ONE_TIME; ++j) {
        p[j] = NULL; 
     }
@@ -557,26 +557,27 @@ void *test_mem_pool_alloc_threads(void *param)
     //print_mem_pool_info(pool);
     srand((unsigned)time(NULL)); 
     for(i = 0; i < TEST_ONE_TIME; ++i) {
-        if(i%3) {
-            size = rand() % 1008 + 16;  //16 ~ 1024
+        if(1) {
+            size = rand() % 1023 + 1;  //16 ~ 1024
             //alloc_size = mem_align_size(size, 16);
         }
         else {
             size = rand() % 64512 + 1025;  //2048 
             //alloc_size = mem_align_size(size, 1024);
         }
-        /*
+        
         p[i] = mem_pool_alloc(pool, size
 #if MEM_POOL_DEBUG
         , __FUNCTION__
 #endif
         );
-        */
-        p[i] = malloc(size);
+        
+        //p[i] = malloc(size);
         if(!p[i]) {
             //__sync_fetch_and_add(&fail_alloc, 1);
-            //printf("alloc size: %u faild thread id: %lu\n", size, pthread_self());
-            goto err;
+            printf("alloc size: %u faild thread id: %lu\n", size, pthread_self());
+            sleep(100);
+            --i;
         }
 
         //memset(p[i], 'a', size);
@@ -595,8 +596,8 @@ void *test_mem_pool_alloc_threads(void *param)
 
 err:
     for(j = 0; j < TEST_ONE_TIME; ++j) {
-       //mem_pool_free(pool, p[j]); 
-       free(p[j]);
+       mem_pool_free(pool, p[j]); 
+       //free(p[j]);
     }
     //print_mem_pool_info(pool);
     return NULL;

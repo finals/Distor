@@ -1,6 +1,7 @@
 #include <sys/socket.h>
 #include <netinet/in.h>
 #include <netinet/tcp.h>  /* for TCP_xxx */
+#include <sys/un.h>
 #include <string.h>
 #include <stdlib.h>
 #include <stdarg.h>
@@ -235,5 +236,119 @@ int tcp_keepalive(char *error, int fd)
         return NET_ERR;
     }
     return NET_OK;
+}
+
+int unix_listen(char *error, char *path, mode_t perm)
+{
+    int listen_fd, opt;
+    struct sockaddr_un serv;
+
+    listen_fd = socket(AF_LOCAL, SOCK_STREAM, 0);
+    if(NET_ERR == listen_fd) {
+        net_set_error(error, "unix_listen socket fd:%d error: %s", 
+            listen_fd, strerror(errno));
+        return NET_ERR;
+    }
+
+    if(NET_ERR == setsockopt(listen_fd, SOL_SOCKET, SO_REUSEADDR, 
+        &opt, sizeof(opt))) {
+        net_set_error(error, "unix_listen setsockopt fd:%d error: %s", 
+            listen_fd, strerror(errno));
+        return NET_ERR;
+    }
+
+    memset(&serv, 0, sizeof(serv));
+    serv.sun_family = AF_LOCAL;
+    strncpy(serv.sun_path,path,sizeof(serv.sun_path)-1);
+
+    if(NET_ERR == bind(listen_fd, (struct sockaddr *)&serv, sizeof(serv))) {
+        net_set_error(error, "unix_listen bind fd: %d  error: %s", 
+            listen_fd, strerror(errno));
+        close(listen_fd);
+        return NET_ERR;
+    }
+
+    /* Use a backlog of 512 entries. We pass 511 to the listen() call because
+     * the kernel does: backlogsize = roundup_pow_of_two(backlogsize + 1);
+     * which will thus give us a backlog of 512 entries */
+    if(NET_ERR == listen(listen_fd, 511)) {
+        net_set_error(error, "unix_listen listen fd: %d  error: %s", 
+            listen_fd, strerror(errno));
+        close(listen_fd);
+        return NET_ERR;
+    }
+
+    if (perm)
+        chmod(serv.sun_path, perm);
+
+    return listen_fd;
+}
+
+int unix_accept(char *error, int listen_fd)
+{
+    int client_fd;
+    struct sockaddr_un cliaddr;
+    socklen_t len = sizeof(cliaddr);
+    
+    while(1) {
+        client_fd = accept(listen_fd, (struct sockaddr *)&cliaddr, &len);
+        if (client_fd == -1) {
+            if (errno == EINTR)
+                continue;
+            else {
+                net_set_error(error, "accept: %s", strerror(errno));
+                return NET_ERR;
+            }
+        }
+        break;
+    }
+
+    return client_fd;
+}
+
+int unix_generic_connect(char *err, char *path, int flags)
+{
+    int sock_fd, on = 1;
+    struct sockaddr_un serv;
+    
+    if (NET_ERR == (sock_fd = socket(AF_LOCAL, SOCK_STREAM, 0))) {
+        net_set_error(err, "creating socket: %s", strerror(errno));
+        return NET_ERR;
+    }
+
+    /* Make sure connection-intensive things like the redis benckmark
+     * will be able to close/open sockets a zillion of times */
+    if (NET_ERR == setsockopt(sock_fd, SOL_SOCKET, SO_REUSEADDR, 
+        &on, sizeof(on))) {
+        net_set_error(err, "setsockopt SO_REUSEADDR: %s", strerror(errno));
+        return NET_ERR;
+    }
+
+    serv.sun_family = AF_LOCAL;
+    strncpy(serv.sun_path, path, sizeof(serv.sun_path)-1);
+    if (flags & NET_NONBLOCK) {
+        if (net_non_block(err,sock_fd) != NET_OK)
+            return NET_ERR;
+    }
+    if (NET_ERR == connect(sock_fd,(struct sockaddr*)&serv,sizeof(serv))) {
+        if (errno == EINPROGRESS &&
+            flags & NET_NONBLOCK)
+            return sock_fd;
+
+        net_set_error(err, "connect: %s", strerror(errno));
+        close(sock_fd);
+        return NET_ERR;
+    }
+    return sock_fd;
+}
+
+int unix_connect(char *error, char *sock_path)
+{
+    return unix_generic_connect(error, sock_path, NET_BLOCK);
+}
+
+int unix_nonblock_connect(char *error, char *sock_path)
+{
+    return unix_generic_connect(error, sock_path, NET_NONBLOCK);
 }
 

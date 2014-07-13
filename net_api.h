@@ -1,6 +1,8 @@
 #ifndef __NET_API_H__
 #define __NET_API_H__
 
+#include <sys/stat.h>
+
 #define NET_OK    0
 #define NET_ERR  -1
 
@@ -20,7 +22,7 @@ int tcp_no_delay(char *error, int fd);
 int tcp_keepalive(char *error, int fd);
 
 /* UnixÓò·â×° */
-int unix_listen(char *error, char *bind_ip, int port);
+int unix_listen(char *error, char *path, mode_t perm);
 int unix_accept(char *error, int listen_fd);
 int unix_connect(char *error, char *sock_path);
 int unix_nonblock_connect(char *error, char *sock_path);

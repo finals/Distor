@@ -1,6 +1,8 @@
 #ifndef __HUB_H__
 #define __HUB_H__
 
+#include <sys/time.h>
+
 /* 网络事件状态 */
 #define EVT_NONE    0    /* 未设置 */
 #define EVT_READ    1    /* 可读 */

@@ -243,6 +243,7 @@ int unix_listen(char *error, char *path, mode_t perm)
     int listen_fd, opt;
     struct sockaddr_un serv;
 
+    unlink(path);
     listen_fd = socket(AF_LOCAL, SOCK_STREAM, 0);
     if(NET_ERR == listen_fd) {
         net_set_error(error, "unix_listen socket fd:%d error: %s", 
